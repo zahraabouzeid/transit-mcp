@@ -1,0 +1,28 @@
+[
+  {
+    "type": "STOP",
+    "tokens": [
+      [
+        0,
+        10
+      ]
+    ],
+    "name": "Aachen Hbf",
+    "id": "de-DELFI_de:05334:1001",
+    "lat": 50.7678,
+    "lon": 6.0912,
+    "areas": [
+      {
+        "name": "Aachen",
+        "adminLevel": 8,
+        "matched": true,
+        "default": true
+      }
+    ],
+    "score": 1.0,
+    "modes": [
+      "REGIONAL_RAIL",
+      "BUS"
+    ]
+  }
+]

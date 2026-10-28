@@ -1,0 +1,26 @@
+[
+  {
+    "type": "ADDRESS",
+    "tokens": [
+      [
+        0,
+        12
+      ]
+    ],
+    "name": "Templergraben 55",
+    "id": "osm-123",
+    "lat": 50.7779,
+    "lon": 6.0776,
+    "street": "Templergraben",
+    "houseNumber": "55",
+    "areas": [
+      {
+        "name": "Aachen",
+        "adminLevel": 8,
+        "matched": true,
+        "default": true
+      }
+    ],
+    "score": 0.9
+  }
+]

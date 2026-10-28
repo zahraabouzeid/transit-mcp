@@ -1,0 +1,155 @@
+{
+  "requestParameters": {},
+  "debugOutput": {},
+  "from": {
+    "name": "Köln Neumarkt",
+    "stopId": "de-DELFI_de:05315:11111",
+    "lat": 50.0,
+    "lon": 6.0,
+    "tz": "Europe/Berlin"
+  },
+  "to": {
+    "name": "Aachen Hbf",
+    "stopId": "de-DELFI_de:05334:1001",
+    "lat": 50.0,
+    "lon": 6.0,
+    "tz": "Europe/Berlin"
+  },
+  "direct": [],
+  "itineraries": [
+    {
+      "duration": 2700,
+      "startTime": "2026-10-28T16:00:00Z",
+      "endTime": "2026-10-28T16:45:00Z",
+      "transfers": 1,
+      "id": "it-1",
+      "legs": [
+        {
+          "mode": "BUS",
+          "from": {
+            "name": "Köln Neumarkt",
+            "stopId": "de-DELFI_de:05315:11111",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin",
+            "departure": "2026-10-28T16:02:00Z",
+            "scheduledDeparture": "2026-10-28T16:00:00Z"
+          },
+          "to": {
+            "name": "Köln Hbf",
+            "stopId": "de-DELFI_de:05315:11000",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin",
+            "arrival": "2026-10-28T16:22:00Z",
+            "scheduledArrival": "2026-10-28T16:22:00Z"
+          },
+          "duration": 1200,
+          "startTime": "2026-10-28T16:02:00Z",
+          "endTime": "2026-10-28T16:22:00Z",
+          "scheduledStartTime": "2026-10-28T16:00:00Z",
+          "scheduledEndTime": "2026-10-28T16:20:00Z",
+          "realTime": true,
+          "scheduled": true,
+          "headsign": "Köln Hbf",
+          "displayName": "132",
+          "agencyName": "KVB",
+          "tripId": "trip-bus",
+          "intermediateStops": [
+            {
+              "name": "Köln Appellhofplatz",
+              "stopId": "s1",
+              "lat": 50.0,
+              "lon": 6.0,
+              "tz": "Europe/Berlin"
+            }
+          ],
+          "legGeometry": {
+            "points": "",
+            "precision": 6,
+            "length": 0
+          }
+        },
+        {
+          "mode": "WALK",
+          "from": {
+            "name": "Köln Hbf",
+            "stopId": "de-DELFI_de:05315:11000",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin"
+          },
+          "to": {
+            "name": "Köln Hbf Gleis 2",
+            "stopId": "de-DELFI_de:05315:11000:2",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin"
+          },
+          "duration": 180,
+          "distance": 140.4,
+          "startTime": "2026-10-28T16:22:00Z",
+          "endTime": "2026-10-28T16:25:00Z",
+          "scheduledStartTime": "2026-10-28T16:22:00Z",
+          "scheduledEndTime": "2026-10-28T16:25:00Z",
+          "realTime": false,
+          "scheduled": true,
+          "legGeometry": {
+            "points": "",
+            "precision": 6,
+            "length": 0
+          }
+        },
+        {
+          "mode": "REGIONAL_RAIL",
+          "from": {
+            "name": "Köln Hbf",
+            "stopId": "de-DELFI_de:05315:11000:2",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin",
+            "departure": "2026-10-28T16:28:00Z",
+            "scheduledDeparture": "2026-10-28T16:28:00Z",
+            "track": "3",
+            "scheduledTrack": "2"
+          },
+          "to": {
+            "name": "Aachen Hbf",
+            "stopId": "de-DELFI_de:05334:1001:1",
+            "lat": 50.0,
+            "lon": 6.0,
+            "tz": "Europe/Berlin",
+            "arrival": "2026-10-28T16:45:00Z",
+            "scheduledArrival": "2026-10-28T16:45:00Z",
+            "track": "5",
+            "scheduledTrack": "5"
+          },
+          "duration": 1020,
+          "startTime": "2026-10-28T16:28:00Z",
+          "endTime": "2026-10-28T16:45:00Z",
+          "scheduledStartTime": "2026-10-28T16:28:00Z",
+          "scheduledEndTime": "2026-10-28T16:45:00Z",
+          "realTime": true,
+          "scheduled": true,
+          "headsign": "Aachen Hbf",
+          "displayName": "RE 1",
+          "agencyName": "National Express",
+          "tripId": "trip-train",
+          "alerts": [
+            {
+              "headerText": "Bauarbeiten",
+              "descriptionText": "Bauarbeiten"
+            }
+          ],
+          "legGeometry": {
+            "points": "",
+            "precision": 6,
+            "length": 0
+          }
+        }
+      ]
+    }
+  ],
+  "previousPageCursor": "prev",
+  "nextPageCursor": "next"
+}
