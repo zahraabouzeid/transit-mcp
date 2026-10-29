@@ -1,0 +1,31 @@
+[package]
+name = "transit-mcp"
+version = "0.2.0"
+description = "MCP server for public transport journeys, departures and platforms"
+edition = "2024"
+license = "AGPL-3.0-only"
+repository = "https://github.com/zahraabouzeid/transit-mcp"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.10"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rmcp = { version = "3.7", features = ["server", "macros", "transport-streamable-http-server"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+
+[dev-dependencies]
+jsonschema = { version = "0.33", default-features = false }
+tower = { version = "0.5", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"

@@ -1,0 +1,60 @@
+{
+  "place": {
+    "name": "Aachen Hbf",
+    "stopId": "de-DELFI_de:05334:1001",
+    "lat": 50.0,
+    "lon": 6.0,
+    "tz": "Europe/Berlin"
+  },
+  "stopTimes": [
+    {
+      "place": {
+        "name": "Aachen Hbf",
+        "stopId": "de-DELFI_de:05334:1001:9",
+        "lat": 50.0,
+        "lon": 6.0,
+        "tz": "Europe/Berlin",
+        "departure": "2026-10-28T16:10:00Z",
+        "scheduledDeparture": "2026-10-28T16:05:00Z",
+        "track": "9",
+        "scheduledTrack": "8"
+      },
+      "mode": "REGIONAL_RAIL",
+      "realTime": true,
+      "headsign": "Düsseldorf Hbf",
+      "tripFrom": {
+        "name": "Aachen Hbf",
+        "stopId": "x",
+        "lat": 50.0,
+        "lon": 6.0,
+        "tz": "Europe/Berlin"
+      },
+      "tripTo": {
+        "name": "Düsseldorf Hbf",
+        "stopId": "y",
+        "lat": 50.0,
+        "lon": 6.0,
+        "tz": "Europe/Berlin"
+      },
+      "agencyId": "a",
+      "agencyName": "DB Regio",
+      "agencyUrl": "",
+      "routeId": "r",
+      "directionId": "0",
+      "tripId": "trip-re4",
+      "routeShortName": "RE4",
+      "routeLongName": "",
+      "tripShortName": "10423",
+      "displayName": "RE 4",
+      "pickupDropoffType": "NORMAL",
+      "cancelled": false,
+      "tripCancelled": false,
+      "bikesAllowed": true,
+      "wheelchairAccessible": "ACCESSIBLE",
+      "reservation": "NONE",
+      "source": ""
+    }
+  ],
+  "previousPageCursor": "p",
+  "nextPageCursor": "n"
+}
