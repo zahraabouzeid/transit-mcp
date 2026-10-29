@@ -1,4 +1,6 @@
 pub mod config;
+mod db_messages;
+pub mod db_timetables;
 pub mod error;
 mod model;
 pub mod server;
@@ -14,6 +16,7 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use crate::config::{Settings, user_agent};
+use crate::db_timetables::DbTimetablesClient;
 use crate::server::TransitServer;
 use crate::transitous::TransitousClient;
 
@@ -27,8 +30,16 @@ pub fn http_client() -> reqwest::Client {
 }
 
 pub fn build_server(settings: &Settings, http: reqwest::Client) -> TransitServer {
-    let transitous = TransitousClient::new(http, settings.transitous_url.clone());
-    TransitServer::new(transitous, settings.timezone)
+    let transitous = TransitousClient::new(http.clone(), settings.transitous_url.clone());
+    let db = settings.has_db_credentials().then(|| {
+        DbTimetablesClient::new(
+            http,
+            settings.db_timetables_url.clone(),
+            settings.db_client_id.clone(),
+            settings.db_api_key.clone(),
+        )
+    });
+    TransitServer::new(transitous, db, settings.timezone)
 }
 
 pub fn app(settings: &Settings, server: TransitServer) -> Router {

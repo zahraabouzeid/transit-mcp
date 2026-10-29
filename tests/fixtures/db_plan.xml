@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<timetable station="Aachen Hbf">
+  <s id="100-2610281805-1">
+    <tl f="N" t="p" o="800337" c="RE" n="10423"/>
+    <dp pt="2610281805" pp="8" l="4" ppth="Aachen-Rothe Erde|Herzogenrath|Düsseldorf Hbf"/>
+  </s>
+  <s id="200-2610281830-1">
+    <tl f="F" t="p" o="80" c="ICE" n="17"/>
+    <ar pt="2610281825" pp="6" ppth="Köln Hbf"/>
+    <dp pt="2610281830" pp="6" ppth="Brüssel-Süd"/>
+  </s>
+  <s id="300-2610281950-1">
+    <tl f="N" t="p" o="800337" c="RB" n="20"/>
+    <dp pt="2610281950" pp="2" l="20" ppth="Stolberg Hbf"/>
+  </s>
+</timetable>

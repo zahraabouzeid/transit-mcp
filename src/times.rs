@@ -1,6 +1,8 @@
 use std::sync::LazyLock;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
+use chrono::{
+    DateTime, Duration, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc,
+};
 use chrono_tz::Tz;
 use regex::Regex;
 
@@ -68,6 +70,10 @@ pub fn parse_user_time(
     in_zone(naive, zone).map(Some).ok_or_else(unreadable)
 }
 
+pub fn now_in(zone: Tz) -> DateTime<FixedOffset> {
+    Utc::now().with_timezone(&zone).fixed_offset()
+}
+
 pub fn to_api_time(moment: DateTime<FixedOffset>) -> String {
     moment
         .with_timezone(&Utc)
@@ -80,17 +86,44 @@ pub fn parse_api_time(value: Option<&str>) -> Option<DateTime<FixedOffset>> {
 }
 
 pub fn local_minutes(value: Option<&str>, zone: Tz) -> Option<String> {
-    parse_api_time(value).map(|moment| {
-        moment
-            .with_timezone(&zone)
-            .format("%Y-%m-%dT%H:%M%:z")
-            .to_string()
-    })
+    parse_api_time(value).map(|moment| format_minutes(moment.with_timezone(&zone).fixed_offset()))
+}
+
+pub fn format_minutes(moment: DateTime<FixedOffset>) -> String {
+    moment.format("%Y-%m-%dT%H:%M%:z").to_string()
 }
 
 pub fn delay_minutes(actual: Option<&str>, scheduled: Option<&str>) -> Option<i64> {
     let difference = parse_api_time(actual)? - parse_api_time(scheduled)?;
-    Some((difference.num_seconds() as f64 / 60.0).round() as i64)
+    Some(minutes(difference))
+}
+
+pub fn minutes(duration: Duration) -> i64 {
+    (duration.num_seconds() as f64 / 60.0).round() as i64
+}
+
+pub fn parse_db_time(value: Option<&str>, zone: Tz) -> Option<DateTime<FixedOffset>> {
+    let naive = NaiveDateTime::parse_from_str(value?, "%y%m%d%H%M").ok()?;
+    in_zone(naive, zone)
+}
+
+pub fn db_slot(moment: DateTime<FixedOffset>, zone: Tz) -> (String, String) {
+    let local = moment.with_timezone(&zone);
+    (
+        local.format("%y%m%d").to_string(),
+        local.format("%H").to_string(),
+    )
+}
+
+pub fn hour_slots(start: DateTime<FixedOffset>, hours: u8) -> Vec<DateTime<FixedOffset>> {
+    let first = start
+        .with_minute(0)
+        .and_then(|moment| moment.with_second(0))
+        .and_then(|moment| moment.with_nanosecond(0))
+        .unwrap_or(start);
+    (0..hours)
+        .map(|offset| first + Duration::hours(i64::from(offset)))
+        .collect()
 }
 
 fn in_zone(naive: NaiveDateTime, zone: Tz) -> Option<DateTime<FixedOffset>> {
@@ -179,5 +212,24 @@ mod tests {
             Some(0)
         );
         assert_eq!(delay_minutes(None, Some("2026-10-28T16:00:00Z")), None);
+    }
+
+    #[test]
+    fn db_time_window_uses_local_hours() {
+        let moment = parse("2026-10-28T18:30")
+            .expect("readable")
+            .expect("a time");
+        assert_eq!(db_slot(moment, BERLIN), ("261028".into(), "18".into()));
+        let slots: Vec<_> = hour_slots(moment, 2)
+            .into_iter()
+            .map(|slot| db_slot(slot, BERLIN).1)
+            .collect();
+        assert_eq!(slots, ["18", "19"]);
+    }
+
+    #[test]
+    fn db_times_are_local() {
+        let moment = parse_db_time(Some("2610281805"), BERLIN).expect("a time");
+        assert_eq!(format_minutes(moment), "2026-10-28T18:05+01:00");
     }
 }

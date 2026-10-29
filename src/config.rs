@@ -3,10 +3,15 @@ use std::collections::HashMap;
 use chrono_tz::Tz;
 
 const DEFAULT_TRANSITOUS_URL: &str = "https://api.transitous.org";
+const DEFAULT_DB_TIMETABLES_URL: &str =
+    "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1";
 
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub transitous_url: String,
+    pub db_timetables_url: String,
+    pub db_client_id: String,
+    pub db_api_key: String,
     pub public_host: String,
     pub host: String,
     pub port: u16,
@@ -35,6 +40,11 @@ impl Settings {
             transitous_url: value("TRANSITOUS_URL", DEFAULT_TRANSITOUS_URL)
                 .trim_end_matches('/')
                 .to_owned(),
+            db_timetables_url: value("DB_TIMETABLES_URL", DEFAULT_DB_TIMETABLES_URL)
+                .trim_end_matches('/')
+                .to_owned(),
+            db_client_id: value("DB_CLIENT_ID", ""),
+            db_api_key: value("DB_API_KEY", ""),
             public_host: value("PUBLIC_HOST", ""),
             host: value("HOST", "0.0.0.0"),
             port: port.parse().map_err(|_| ConfigError::Port(port.clone()))?,
@@ -42,6 +52,10 @@ impl Settings {
                 .parse()
                 .map_err(|_| ConfigError::Timezone(timezone.clone()))?,
         })
+    }
+
+    pub fn has_db_credentials(&self) -> bool {
+        !self.db_client_id.is_empty() && !self.db_api_key.is_empty()
     }
 }
 
