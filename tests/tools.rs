@@ -16,6 +16,9 @@ const GEOCODE_AACHEN: &str = include_str!("fixtures/geocode_aachen.json");
 const GEOCODE_ADDRESS: &str = include_str!("fixtures/geocode_address.json");
 const PLAN: &str = include_str!("fixtures/plan.json");
 const STOPTIMES: &str = include_str!("fixtures/stoptimes.json");
+const DB_STATIONS: &str = include_str!("fixtures/db_stations.xml");
+const DB_PLAN: &str = include_str!("fixtures/db_plan.xml");
+const DB_CHANGES: &str = include_str!("fixtures/db_changes.xml");
 
 type Recorded = Arc<Mutex<Vec<(String, HashMap<String, String>)>>>;
 
@@ -63,6 +66,7 @@ async fn answer(State(requests): State<Recorded>, request: Request) -> Response 
         .expect("not poisoned")
         .push((path.clone(), query.clone()));
     let json = |body: &'static str| ([(header::CONTENT_TYPE, "application/json")], body);
+    let xml = |body: &'static str| ([(header::CONTENT_TYPE, "application/xml")], body);
     match path.as_str() {
         "/api/v1/geocode" => {
             let text = query.get("text").map(String::as_str).unwrap_or_default();
@@ -85,15 +89,27 @@ async fn answer(State(requests): State<Recorded>, request: Request) -> Response 
                 .into_response()
         }
         "/api/v6/broken" => StatusCode::BAD_REQUEST.into_response(),
+        "/timetables/plan/8000001/261028/18" => xml(DB_PLAN).into_response(),
+        "/timetables/fchg/8000001" => xml(DB_CHANGES).into_response(),
+        path if path.starts_with("/timetables/station/") => xml(DB_STATIONS).into_response(),
+        path if path.starts_with("/timetables/plan/") => StatusCode::NOT_FOUND.into_response(),
         _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
-fn settings(apis: &Apis, public_host: &str) -> Settings {
-    let env = HashMap::from([
+fn settings(apis: &Apis, public_host: &str, with_db: bool) -> Settings {
+    let mut env = HashMap::from([
         ("TRANSITOUS_URL".to_owned(), apis.base.clone()),
+        (
+            "DB_TIMETABLES_URL".to_owned(),
+            format!("{}/timetables", apis.base),
+        ),
         ("PUBLIC_HOST".to_owned(), public_host.to_owned()),
     ]);
+    if with_db {
+        env.insert("DB_CLIENT_ID".into(), "id".into());
+        env.insert("DB_API_KEY".into(), "key".into());
+    }
     Settings::from_map(&env).expect("valid settings")
 }
 
@@ -128,8 +144,12 @@ struct Server {
 
 impl Server {
     async fn start() -> Self {
+        Self::with_db(true).await
+    }
+
+    async fn with_db(with_db: bool) -> Self {
         let apis = Apis::start().await;
-        let router = router(&settings(&apis, "testserver"));
+        let router = router(&settings(&apis, "testserver", with_db));
         let (_, listed) = post(
             &router,
             "testserver",
@@ -465,9 +485,93 @@ async fn find_place_passes_filters() {
 }
 
 #[tokio::test]
+async fn db_station_board_merges_live_changes() {
+    let server = Server::start().await;
+    let result = server
+        .call(
+            "db_station_board",
+            json!({"station": "Aachen Hbf", "time": "2026-10-28T18:00"}),
+        )
+        .await;
+
+    assert_eq!(
+        server.apis.paths(),
+        [
+            "/timetables/station/Aachen%20Hbf",
+            "/timetables/plan/8000001/261028/18",
+            "/timetables/fchg/8000001",
+        ]
+    );
+    assert_eq!(result["station"], "Aachen Hbf");
+    assert_eq!(result["eva"], "8000001");
+    let trains = result["departures"].as_array().expect("departures");
+    let names: Vec<_> = trains.iter().map(|train| &train["train"]).collect();
+    assert_eq!(names, ["RE 4", "ICE 17"]);
+    let (regional, intercity) = (&trains[0], &trains[1]);
+    assert_eq!(regional["platform"], "9");
+    assert_eq!(regional["planned_platform"], "8");
+    assert_eq!(regional["platform_changed"], true);
+    assert_eq!(regional["planned"], "2026-10-28T18:05+01:00");
+    assert_eq!(regional["expected"], "2026-10-28T18:12+01:00");
+    assert_eq!(regional["delay_min"], 7);
+    assert_eq!(regional["to"], "Düsseldorf Hbf");
+    assert_eq!(
+        regional["alerts"],
+        json!([
+            "Verspätung eines vorausfahrenden Zuges",
+            "Abweichende Wagenreihung"
+        ])
+    );
+    assert!(intercity.get("alerts").is_none());
+    assert_eq!(intercity["cancelled"], true);
+    assert_eq!(intercity["delay_min"], 0);
+}
+
+#[tokio::test]
+async fn db_station_board_by_eva_number_lists_arrivals() {
+    let server = Server::start().await;
+    let result = server
+        .call(
+            "db_station_board",
+            json!({"station": "8000001", "time": "2026-10-28T18:00", "arrivals": true, "hours": 2}),
+        )
+        .await;
+
+    assert_eq!(
+        server.apis.paths(),
+        [
+            "/timetables/plan/8000001/261028/18",
+            "/timetables/plan/8000001/261028/19",
+            "/timetables/fchg/8000001",
+        ]
+    );
+    assert_eq!(result["station"], "8000001");
+    let trains = result["arrivals"].as_array().expect("arrivals");
+    let names: Vec<_> = trains.iter().map(|train| &train["train"]).collect();
+    assert_eq!(names, ["ICE 17"], "the RE 4 has no planned arrival here");
+    assert_eq!(trains[0]["from"], "Köln Hbf");
+    assert!(
+        trains[0].get("cancelled").is_none(),
+        "only its departure is cancelled"
+    );
+}
+
+#[tokio::test]
+async fn db_station_board_without_credentials() {
+    let server = Server::with_db(false).await;
+    let error = server
+        .error("db_station_board", json!({"station": "Aachen Hbf"}))
+        .await;
+    assert_eq!(
+        error,
+        "The DB timetable is not configured on this server. Use departures instead."
+    );
+}
+
+#[tokio::test]
 async fn tools_are_listed_read_only_with_instructions() {
     let apis = Apis::start().await;
-    let router = router(&settings(&apis, "testserver"));
+    let router = router(&settings(&apis, "testserver", false));
     let (status, initialized) = post(
         &router,
         "testserver",
@@ -503,7 +607,13 @@ async fn tools_are_listed_read_only_with_instructions() {
     names.sort_unstable();
     assert_eq!(
         names,
-        ["departures", "find_place", "plan_journey", "trip_details"]
+        [
+            "db_station_board",
+            "departures",
+            "find_place",
+            "plan_journey",
+            "trip_details"
+        ]
     );
     for tool in tools {
         assert_eq!(tool["annotations"]["readOnlyHint"], true, "{tool}");
@@ -518,7 +628,7 @@ async fn health_answers_ok() {
     let request = axum::http::Request::get("/health")
         .body(Body::empty())
         .expect("a valid request");
-    let response = router(&settings(&apis, ""))
+    let response = router(&settings(&apis, "", false))
         .oneshot(request)
         .await
         .expect("a response");
@@ -532,7 +642,7 @@ async fn health_answers_ok() {
 #[tokio::test]
 async fn unknown_host_and_origin_are_rejected() {
     let apis = Apis::start().await;
-    let router = router(&settings(&apis, "transit.example.org"));
+    let router = router(&settings(&apis, "transit.example.org", false));
     let list = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
 
     let (status, _) = post(&router, "evil.example", list.clone()).await;

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<timetable station="Aachen Hbf" eva="8000001">
+  <s id="100-2610281805-1" eva="8000001">
+    <dp ct="2610281812" cp="9">
+      <m id="r1" t="d" c="43" ts="2610281801"/>
+    </dp>
+    <ar ct="2610281810">
+      <m id="r1" t="d" c="43" ts="2610281801"/>
+    </ar>
+    <m id="r2" t="q" c="80" ts="2610281802"/>
+    <m id="r3" t="d" c="0" ts="2610281802"/>
+  </s>
+  <s id="200-2610281830-1" eva="8000001">
+    <dp cs="c"/>
+  </s>
+</timetable>

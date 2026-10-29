@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use chrono_tz::Tz;
 use regex::Regex;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -10,22 +10,27 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::db_timetables::{DbTimetablesClient, Event, Stop};
 use crate::error::{self, TransitError};
 use crate::model::{self, BoardEntry, Journey, PlaceInfo, TripStop};
-use crate::times::{parse_user_time, to_api_time};
+use crate::times::{format_minutes, minutes, now_in, parse_db_time, parse_user_time, to_api_time};
 use crate::transitous::{LANGUAGE, Query, TransitousClient};
 
 static COORDINATES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?\s*$").expect("valid pattern")
 });
+static EVA_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\d{7}$").expect("valid pattern"));
+
 const TRANSITOUS_SOURCE: &str = "Transitous, https://transitous.org/sources/";
+const DB_SOURCE: &str = "Deutsche Bahn Timetables API, CC BY 4.0";
 
 const INSTRUCTIONS: &str = "\
 You answer questions about travelling by public transport, the way a journey planner app does:
 how to get from A to B, where to change, which platform a train leaves from, whether it is late,
 and what leaves from a stop next. The data covers Germany and many other countries through
 Transitous, a free routing service built on open timetables with live updates where operators
-publish them.
+publish them. For German railway stations, the DB timetable adds live platform changes.
 
 How to work with the tools:
 - Use plan_journey for any trip from A to B. It accepts stop names, addresses, place names or
@@ -34,6 +39,8 @@ How to work with the tools:
   the user the options before planning.
 - Use departures for \"what leaves from X\" and departures with arrivals=true for \"what arrives\".
 - Use trip_details with a trip_id from another result to list every stop of one train or bus.
+- Use db_station_board for German railway stations when the user cares about platforms and
+  platform changes right now. It covers DB stations only, not bus stops.
 
 When you answer, lead with the departure time, the line and the platform, then each change with
 its platform and walking time. Mention delays, cancellations and platform changes clearly,
@@ -44,6 +51,7 @@ means the data source has none, so say that instead of guessing.
 #[derive(Clone)]
 pub struct TransitServer {
     transitous: Arc<TransitousClient>,
+    db: Option<Arc<DbTimetablesClient>>,
     zone: Tz,
     tool_router: ToolRouter<Self>,
 }
@@ -123,6 +131,21 @@ struct TripDetailsArgs {
     trip_id: String,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct StationBoardArgs {
+    /// German railway station name or 7-digit EVA number.
+    station: String,
+    /// 'HH:MM' for today or ISO date and time. Defaults to now.
+    time: Option<String>,
+    /// How many hours to show.
+    #[serde(default = "board_hours")]
+    #[schemars(range(min = 1, max = 3))]
+    hours: u8,
+    /// True to list arrivals instead of departures.
+    #[serde(default)]
+    arrivals: bool,
+}
+
 fn any_kind() -> String {
     "any".into()
 }
@@ -133,6 +156,10 @@ fn find_place_limit() -> u8 {
 
 fn departures_limit() -> u8 {
     15
+}
+
+fn board_hours() -> u8 {
+    1
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -188,11 +215,58 @@ pub struct TripDetailsResult {
     source: String,
 }
 
+#[derive(Serialize, JsonSchema)]
+pub struct StationBoardResult {
+    station: String,
+    eva: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    departures: Option<Vec<Train>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    arrivals: Option<Vec<Train>>,
+    source: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct Train {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    train: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    number: Option<String>,
+    planned: String,
+    expected: String,
+    delay_min: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    planned_platform: Option<String>,
+    #[serde(default, skip_serializing_if = "model::is_false")]
+    platform_changed: bool,
+    #[serde(default, skip_serializing_if = "model::is_false")]
+    cancelled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    to: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    stops: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    alerts: Vec<String>,
+    #[serde(skip)]
+    #[schemars(skip)]
+    planned_at: DateTime<FixedOffset>,
+    #[serde(skip)]
+    #[schemars(skip)]
+    expected_at: DateTime<FixedOffset>,
+}
+
 #[tool_router]
 impl TransitServer {
-    pub fn new(transitous: TransitousClient, zone: Tz) -> Self {
+    pub fn new(transitous: TransitousClient, db: Option<DbTimetablesClient>, zone: Tz) -> Self {
         Self {
             transitous: Arc::new(transitous),
+            db: db.map(Arc::new),
             zone,
             tool_router: Self::tool_router(),
         }
@@ -383,6 +457,52 @@ impl TransitServer {
             source: TRANSITOUS_SOURCE.into(),
         }))
     }
+
+    #[tool(
+        description = "Show the live DB board of a German railway station with platforms.\n\n\
+            This comes straight from Deutsche Bahn and is the most reliable source for current \
+            platforms, platform changes, delays and cancellations of trains in Germany. It does \
+            not include buses or trams. Use departures or plan_journey for those.",
+        annotations(read_only_hint = true, open_world_hint = true)
+    )]
+    async fn db_station_board(
+        &self,
+        Parameters(args): Parameters<StationBoardArgs>,
+    ) -> Result<Json<StationBoardResult>, String> {
+        let Some(db) = &self.db else {
+            return Err(
+                "The DB timetable is not configured on this server. Use departures instead.".into(),
+            );
+        };
+        within("hours", args.hours, 1, 3)?;
+        let start = self
+            .read_time(args.time.as_deref())?
+            .unwrap_or_else(|| now_in(self.zone));
+        let (name, eva) = find_station(db, &args.station).await?;
+        let stops = db.board(&eva, start, args.hours, self.zone).await?;
+        let end = start + Duration::hours(i64::from(args.hours));
+
+        let mut trains: Vec<Train> = stops
+            .iter()
+            .filter_map(|stop| Train::new(stop, args.arrivals, self.zone))
+            .filter(|train| {
+                train.expected_at >= start - Duration::minutes(1) && train.planned_at < end
+            })
+            .collect();
+        trains.sort_by_key(|train| train.planned_at);
+        let (departures, arrivals) = if args.arrivals {
+            (None, Some(trains))
+        } else {
+            (Some(trains), None)
+        };
+        Ok(Json(StationBoardResult {
+            station: name,
+            eva,
+            departures,
+            arrivals,
+            source: DB_SOURCE.into(),
+        }))
+    }
 }
 
 impl TransitServer {
@@ -429,6 +549,49 @@ impl TransitServer {
     }
 }
 
+impl Train {
+    fn new(stop: &Stop, arrivals: bool, zone: Tz) -> Option<Self> {
+        let event: &Event = if arrivals {
+            stop.arrival.as_ref()?
+        } else {
+            stop.departure.as_ref()?
+        };
+        if event.hidden {
+            return None;
+        }
+        let planned_at = parse_db_time(event.planned_time.as_deref(), zone)?;
+        let expected_at = parse_db_time(event.changed_time.as_deref(), zone).unwrap_or(planned_at);
+        let stations = event.stations();
+        let (from, to) = if arrivals {
+            (stations.first().cloned(), None)
+        } else {
+            (None, stations.last().cloned())
+        };
+        Some(Self {
+            train: train_name(
+                stop.category.as_deref(),
+                event.line.as_deref(),
+                stop.number.as_deref(),
+            ),
+            category: stop.category.clone(),
+            number: stop.number.clone(),
+            planned: format_minutes(planned_at),
+            expected: format_minutes(expected_at),
+            delay_min: minutes(expected_at - planned_at),
+            platform: event.platform().map(str::to_owned),
+            planned_platform: event.planned_platform.clone(),
+            platform_changed: event.platform_changed(),
+            cancelled: event.is_cancelled(),
+            from,
+            to,
+            stops: stations,
+            alerts: stop.message_texts(),
+            planned_at,
+            expected_at,
+        })
+    }
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for TransitServer {
     fn get_info(&self) -> ServerConfig {
@@ -440,6 +603,32 @@ impl ServerHandler for TransitServer {
                     .with_website_url(env!("CARGO_PKG_REPOSITORY")),
             )
             .with_instructions(INSTRUCTIONS)
+    }
+}
+
+async fn find_station(db: &DbTimetablesClient, station: &str) -> error::Result<(String, String)> {
+    let value = station.trim();
+    if EVA_NUMBER.is_match(value) {
+        return Ok((value.to_owned(), value.to_owned()));
+    }
+    let found = db
+        .find_stations(value)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| TransitError::new(format!("No DB station found for {station:?}.")))?;
+    Ok((found.name, found.eva))
+}
+
+fn train_name(category: Option<&str>, line: Option<&str>, number: Option<&str>) -> Option<String> {
+    let Some(category) = category.filter(|category| !category.is_empty()) else {
+        return line.or(number).map(str::to_owned);
+    };
+    match (line, number) {
+        (Some(line), _) if line.starts_with(category) => Some(line.to_owned()),
+        (Some(line), _) => Some(format!("{category} {line}")),
+        (None, Some(number)) => Some(format!("{category} {number}")),
+        (None, None) => Some(category.to_owned()),
     }
 }
 
