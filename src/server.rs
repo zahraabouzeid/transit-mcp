@@ -116,6 +116,8 @@ struct DeparturesArgs {
     /// True to list arrivals instead of departures.
     #[serde(default)]
     arrivals: bool,
+    /// Roughly how many entries to return. The result can hold a few more, so
+    /// show the user only as many as they asked for.
     #[serde(default = "departures_limit")]
     #[schemars(range(min = 1, max = 50))]
     limit: u8,
