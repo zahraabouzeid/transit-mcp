@@ -21,8 +21,55 @@ pub struct Match {
     pub street: Option<String>,
     #[serde(deserialize_with = "non_empty")]
     pub house_number: Option<String>,
+    #[serde(deserialize_with = "non_empty")]
+    pub country: Option<String>,
     pub areas: Vec<Area>,
     pub modes: Vec<String>,
+}
+
+const SAME_STATION_METERS: f64 = 300.0;
+
+impl Match {
+    fn feed_country(&self) -> Option<&str> {
+        let (prefix, _) = self.id.as_deref()?.split_once('-')?;
+        (prefix.len() == 2).then_some(prefix)
+    }
+
+    fn is_same_station(&self, other: &Match) -> bool {
+        self.kind == "STOP"
+            && other.kind == "STOP"
+            && self.modes.iter().any(|mode| other.modes.contains(mode))
+            && distance_meters(self, other) <= SAME_STATION_METERS
+    }
+}
+
+pub fn best_match(matches: Vec<Match>) -> Option<Match> {
+    let top = matches.first()?;
+    let Some(country) = top.country.as_deref() else {
+        return matches.into_iter().next();
+    };
+    let local = |found: &Match| {
+        found
+            .feed_country()
+            .is_some_and(|feed| feed.eq_ignore_ascii_case(country))
+    };
+    if local(top) {
+        return matches.into_iter().next();
+    }
+    let index = matches
+        .iter()
+        .position(|found| local(found) && top.is_same_station(found))
+        .unwrap_or(0);
+    matches.into_iter().nth(index)
+}
+
+fn distance_meters(a: &Match, b: &Match) -> f64 {
+    const EARTH_RADIUS_METERS: f64 = 6_371_000.0;
+    let (lat_a, lat_b) = (a.lat.to_radians(), b.lat.to_radians());
+    let dlat = lat_b - lat_a;
+    let dlon = (b.lon - a.lon).to_radians();
+    let h = (dlat / 2.0).sin().powi(2) + lat_a.cos() * lat_b.cos() * (dlon / 2.0).sin().powi(2);
+    2.0 * EARTH_RADIUS_METERS * h.sqrt().asin()
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -293,4 +340,132 @@ fn non_empty<'de, D: Deserializer<'de>>(
 ) -> std::result::Result<Option<String>, D::Error> {
     let value = Option::<String>::deserialize(deserializer)?;
     Ok(value.filter(|text| !text.is_empty()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stop(id: &str, lat: f64, lon: f64, country: Option<&str>, modes: &[&str]) -> Match {
+        Match {
+            kind: "STOP".into(),
+            id: Some(id.into()),
+            lat,
+            lon,
+            country: country.map(Into::into),
+            modes: modes.iter().map(|mode| (*mode).into()).collect(),
+            ..Match::default()
+        }
+    }
+
+    fn picked(matches: Vec<Match>) -> String {
+        best_match(matches)
+            .and_then(|found| found.id)
+            .expect("a match")
+    }
+
+    #[test]
+    fn prefers_the_local_feed_for_a_station_listed_twice() {
+        let matches = vec![
+            stop(
+                "be-sncb_8015199",
+                50.78078,
+                6.07055,
+                Some("DE"),
+                &["REGIONAL_RAIL", "SUBURBAN"],
+            ),
+            stop(
+                "de-DELFI_de:05334:1086",
+                50.78036,
+                6.070715,
+                Some("DE"),
+                &["REGIONAL_RAIL", "BUS"],
+            ),
+        ];
+        assert_eq!(picked(matches), "de-DELFI_de:05334:1086");
+    }
+
+    #[test]
+    fn keeps_the_top_match_when_it_is_already_local() {
+        let matches = vec![
+            stop(
+                "be-sncb_8841004",
+                50.62441,
+                5.56672,
+                Some("BE"),
+                &["REGIONAL_RAIL"],
+            ),
+            stop(
+                "de-DELFI_de:05334:1086",
+                50.62440,
+                5.56670,
+                Some("BE"),
+                &["REGIONAL_RAIL"],
+            ),
+        ];
+        assert_eq!(picked(matches), "be-sncb_8841004");
+    }
+
+    #[test]
+    fn keeps_the_top_match_when_the_local_stop_is_elsewhere() {
+        let matches = vec![
+            stop(
+                "be-sncb_8015199",
+                50.78078,
+                6.07055,
+                Some("DE"),
+                &["REGIONAL_RAIL"],
+            ),
+            stop(
+                "de-DELFI_de:05334:1001",
+                50.7678,
+                6.0912,
+                Some("DE"),
+                &["REGIONAL_RAIL"],
+            ),
+        ];
+        assert_eq!(picked(matches), "be-sncb_8015199");
+    }
+
+    #[test]
+    fn keeps_the_top_match_without_a_country() {
+        let matches = vec![
+            stop(
+                "be-sncb_8015199",
+                50.78078,
+                6.07055,
+                None,
+                &["REGIONAL_RAIL"],
+            ),
+            stop(
+                "de-DELFI_de:05334:1086",
+                50.78036,
+                6.070715,
+                None,
+                &["REGIONAL_RAIL"],
+            ),
+        ];
+        assert_eq!(picked(matches), "be-sncb_8015199");
+    }
+
+    #[test]
+    fn ignores_a_nearby_stop_without_a_shared_mode() {
+        let matches = vec![
+            stop(
+                "be-sncb_8015199",
+                50.78078,
+                6.07055,
+                Some("DE"),
+                &["REGIONAL_RAIL"],
+            ),
+            stop(
+                "de-DELFI_de:05334:1999",
+                50.78050,
+                6.07060,
+                Some("DE"),
+                &["BUS"],
+            ),
+        ];
+        assert_eq!(picked(matches), "be-sncb_8015199");
+    }
 }

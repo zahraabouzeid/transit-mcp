@@ -14,6 +14,7 @@ use transit_mcp::{app, build_server, http_client};
 
 const GEOCODE_AACHEN: &str = include_str!("fixtures/geocode_aachen.json");
 const GEOCODE_ADDRESS: &str = include_str!("fixtures/geocode_address.json");
+const GEOCODE_AACHEN_WEST: &str = include_str!("fixtures/geocode_aachen_west.json");
 const PLAN: &str = include_str!("fixtures/plan.json");
 const STOPTIMES: &str = include_str!("fixtures/stoptimes.json");
 const DB_STATIONS: &str = include_str!("fixtures/db_stations.xml");
@@ -72,6 +73,8 @@ async fn answer(State(requests): State<Recorded>, request: Request) -> Response 
             let text = query.get("text").map(String::as_str).unwrap_or_default();
             if text.contains("Templergraben") {
                 json(GEOCODE_ADDRESS).into_response()
+            } else if text.contains("Aachen West") {
+                json(GEOCODE_AACHEN_WEST).into_response()
             } else if text.contains("Nowhere") {
                 json("[]").into_response()
             } else {
@@ -312,6 +315,24 @@ async fn plan_journey_resolves_via_stops() {
     assert_eq!(query["via"], "de-DELFI_de:05334:1001");
     assert_eq!(query["requireBikeTransport"], "true");
     assert_eq!(server.apis.last("/api/v1/geocode")["type"], "STOP");
+}
+
+#[tokio::test]
+async fn plan_journey_prefers_the_local_copy_of_a_station() {
+    let server = Server::start().await;
+    let result = server
+        .call(
+            "plan_journey",
+            json!({"origin": "Aachen West", "destination": "Aachen Hbf"}),
+        )
+        .await;
+
+    assert_eq!(server.apis.last("/api/v1/geocode")["numResults"], "5");
+    assert_eq!(
+        server.apis.last("/api/v6/plan")["fromPlace"],
+        "de-DELFI_de:05334:1086"
+    );
+    assert_eq!(result["from"]["name"], "Aachen, West Bf");
 }
 
 #[tokio::test]
