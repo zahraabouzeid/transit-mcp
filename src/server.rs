@@ -14,7 +14,7 @@ use crate::db_timetables::{DbTimetablesClient, Event, Stop};
 use crate::error::{self, TransitError};
 use crate::model::{self, BoardEntry, Journey, PlaceInfo, TripStop};
 use crate::times::{format_minutes, minutes, now_in, parse_db_time, parse_user_time, to_api_time};
-use crate::transitous::{LANGUAGE, Query, TransitousClient};
+use crate::transitous::{LANGUAGE, Query, TransitousClient, best_match};
 
 static COORDINATES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?\s*$").expect("valid pattern")
@@ -24,6 +24,7 @@ static EVA_NUMBER: LazyLock<Regex> =
 
 const TRANSITOUS_SOURCE: &str = "Transitous, https://transitous.org/sources/";
 const DB_SOURCE: &str = "Deutsche Bahn Timetables API, CC BY 4.0";
+const RESOLVE_CANDIDATES: u8 = 5;
 
 const INSTRUCTIONS: &str = "\
 You answer questions about travelling by public transport, the way a journey planner app does:
@@ -531,17 +532,15 @@ impl TransitServer {
             return Ok((value.to_owned(), info));
         }
         let types: &[&str] = if stops_only { &["STOP"] } else { &[] };
-        let found = self
+        let matches = self
             .transitous
-            .geocode(value, types, None, 1)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                TransitError::new(format!(
-                    "No place found for {value:?}. Try a more specific name."
-                ))
-            })?;
+            .geocode(value, types, None, RESOLVE_CANDIDATES)
+            .await?;
+        let found = best_match(matches).ok_or_else(|| {
+            TransitError::new(format!(
+                "No place found for {value:?}. Try a more specific name."
+            ))
+        })?;
         let info = PlaceInfo::from(found);
         let place = match (&info.id, info.kind.as_str()) {
             (Some(id), "STOP") => id.clone(),

@@ -1,0 +1,26 @@
+[
+  {
+    "type": "STOP",
+    "tokens": [[0, 11]],
+    "name": "Aachen West",
+    "id": "be-sncb_8015199",
+    "lat": 50.78078,
+    "lon": 6.07055,
+    "country": "DE",
+    "areas": [{"name": "Aachen", "adminLevel": 8, "matched": true, "default": true}],
+    "score": 1.0,
+    "modes": ["REGIONAL_RAIL", "SUBURBAN"]
+  },
+  {
+    "type": "STOP",
+    "tokens": [[0, 11]],
+    "name": "Aachen, West Bf",
+    "id": "de-DELFI_de:05334:1086",
+    "lat": 50.78036,
+    "lon": 6.070715,
+    "country": "DE",
+    "areas": [{"name": "Aachen", "adminLevel": 8, "matched": true, "default": true}],
+    "score": 0.9,
+    "modes": ["REGIONAL_RAIL", "BUS"]
+  }
+]
